@@ -6,26 +6,29 @@
 
 // CAN Receive Example
 // Uses the MCP_CAN_lib-master-1.5.0 library
+// https://github.com/coryjfowler/MCP_CAN_lib
 // This one is set for Arduino Nano
 
 #include <mcp_can.h>
 #include <SPI.h>
 
 unsigned long upTimer = millis();
+unsigned long dtaCounter = 0;
 
 #define CAN0_INT 2                              // Set INT to pin 2
 MCP_CAN CAN0(10);                               // Set CS to pin 10
 
-
+// Comment out to enter receive mode
+#define send
 
 // the setup function runs once when you press reset or power the board
 void setup() {
   // Serial needs to be at least this speed otherwise line will be dropped
   Serial.begin(250000);
-  Serial.println("Single Can Bus Logger, 125kb/s...");
+  Serial.println("Single Can Bus Sender/Logger, 500kb/s...");
 
   // Initialize MCP2515 running at 8MHz with a baudrate of 500kb/s and the masks and filters disabled.
-  if (CAN0.begin(MCP_ANY, CAN_125KBPS, MCP_16MHZ) == CAN_OK)
+  if (CAN0.begin(MCP_ANY, CAN_500KBPS, MCP_16MHZ) == CAN_OK)
     Serial.println("CAN0: MCP2515 Initialized Successfully!");
   else
     Serial.println("CAN0: Error Initializing MCP2515...");
@@ -35,10 +38,14 @@ void setup() {
 
 // the loop function runs over and over again until power down or reset
 void loop() {
+#ifndef send
   if (!digitalRead(CAN0_INT))                         // If CAN0_INT pin is low, read receive buffer
   {
     readCan(CAN0, 0);
   }
+#else
+  sendCan(CAN0, 0);
+#endif
 }
 
 void readCan(MCP_CAN myCan, uint8_t MCP2515number) {
@@ -73,5 +80,51 @@ void readCan(MCP_CAN myCan, uint8_t MCP2515number) {
   Serial.println();
 
   //timer1 = micros();
+}
+
+void sendCan(MCP_CAN myCan, uint8_t MCP2515number) {
+  unsigned char dta[8] = { 0, 0, 0, 0, 0, 0, 0, 0 };
+
+  // Create loop timer
+  unsigned long timer = micros();
+
+  // Increase the counter
+  dtaCounter++;
+  if (dtaCounter == 1099511627775) dtaCounter = 0;
+
+  //Parse that dtaCounter into values
+  dta[7] = dtaCounter;
+  dta[6] = dtaCounter >> 8;
+  dta[5] = dtaCounter >> 16;
+  dta[4] = dtaCounter >> 24;
+  dta[3] = dtaCounter >> 32;
+  //dta[2] = dtaCounter >> 40;
+  //dta[1] = dtaCounter >> 48;
+  //dta[0] = dtaCounter >> 56;
+
+
+  //can.send(0x0145, 0, 0, 8, dta);   // SEND TO ID:0X55
+  myCan.sendMsgBuf(0x146, 0, 8, dta);
+  //Serial.print("Sending: ");
+  //Serial.print(0x0145, HEX);
+  //Serial.print(" ");
+  //Serial.print("00 00 08 ");
+  //for (int i = 0; i <8; i++) {
+  //  Serial.print(dta[i]); Serial.print(" ");
+  //}
+  //Serial.println("");
+
+  // Delay loop
+
+
+  // It should take around 222uS to send a packet, the Nano can not run fast enough
+  while (micros() - timer < 4000) {}
+
+  // report loop time - if its more than 4000uS then the nano took longer to send the data
+  unsigned long loopTime = micros() - timer;
+  dta[2] = loopTime >> 0;
+  dta[1] = loopTime >> 8;
+  dta[0] = loopTime >> 16;
+
 }
 
